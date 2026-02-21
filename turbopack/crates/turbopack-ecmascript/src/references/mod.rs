@@ -3529,7 +3529,9 @@ async fn value_visitor_inner(
                 && let Some(external) = module_value_to_well_known_object(mv)
             {
                 external
-            } else if let Some(module) = module_value_to_constants_module(mv, origin).await? {
+            } else if let Some(module) =
+                module_value_to_constants_module(mv, origin, compile_time_info).await?
+            {
                 module
             } else {
                 v.into_unknown(true, "cross module analyzing is not yet supported")

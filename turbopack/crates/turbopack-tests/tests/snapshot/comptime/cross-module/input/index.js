@@ -1,4 +1,4 @@
-import { SOME_VALUE } from './other.constants'
+import { IS_DEV, SOME_VALUE } from './other.constants'
 
 if (SOME_VALUE === 'x') {
   console.log('x')
@@ -6,4 +6,8 @@ if (SOME_VALUE === 'x') {
   console.log('dead')
 }
 
-console.log(SOME_VALUE)
+if (IS_DEV) {
+  console.log('x')
+} else {
+  console.log('dead')
+}
