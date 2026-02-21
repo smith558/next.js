@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["turbopack:///[project]/turbopack/crates/turbopack-tests/tests/snapshot/comptime/cross-module/input/other.constants.js"],"sourcesContent":["export const SOME_VALUE = 'x'\n"],"names":["SOME_VALUE"],"mappings":";;;;AAAO,MAAMA,aAAa"}},
+    {"offset": {"line": 13, "column": 0}, "map": {"version":3,"sources":["turbopack:///[project]/turbopack/crates/turbopack-tests/tests/snapshot/comptime/cross-module/input/index.js"],"sourcesContent":["import { SOME_VALUE } from './other.constants'\n\nif (SOME_VALUE === 'x') {\n  console.log('x')\n} else {\n  console.log('dead')\n}\n\nconsole.log(SOME_VALUE)\n"],"names":["console","log"],"mappings":";AAAA;;AAEA,wCAAwB;IACtBA,QAAQC,GAAG,CAAC;AACd;;AAIAD,QAAQC,GAAG,CAAC,oOAAU"}}]
+}

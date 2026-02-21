@@ -9,6 +9,13 @@ use std::{
 };
 
 use anyhow::{Result, bail};
+use bincode::{
+    Decode, Encode,
+    de::Decoder,
+    enc::Encoder,
+    error::{DecodeError, EncodeError},
+    impl_borrow_decode,
+};
 use num_bigint::BigInt;
 use num_traits::identities::Zero;
 use once_cell::sync::Lazy;
@@ -24,7 +31,10 @@ use swc_core::{
 };
 use turbo_esregex::EsRegex;
 use turbo_rcstr::RcStr;
-use turbo_tasks::{FxIndexMap, FxIndexSet, Vc};
+use turbo_tasks::{
+    FxIndexMap, FxIndexSet, NonLocalValue, Vc,
+    trace::{TraceRawVcs, TraceRawVcsContext},
+};
 use turbopack_core::compile_time_info::{
     CompileTimeDefineValue, DefinableNameSegmentRef, DefinableNameSegmentRefs, FreeVarReference,
 };
@@ -57,7 +67,7 @@ impl Default for ObjectPart {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Encode, Decode, TraceRawVcs)]
 pub struct ConstantNumber(pub f64);
 
 fn integer_decode(val: f64) -> (u64, i16, i8) {
@@ -100,6 +110,24 @@ pub enum ConstantString {
     Atom(Atom),
     RcStr(RcStr),
 }
+impl TraceRawVcs for ConstantString {
+    fn trace_raw_vcs(&self, _context: &mut TraceRawVcsContext) {}
+}
+unsafe impl NonLocalValue for ConstantString {}
+impl Encode for ConstantString {
+    fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
+        match self {
+            ConstantString::Atom(s) => s.as_str().encode(encoder),
+            ConstantString::RcStr(s) => s.as_str().encode(encoder),
+        }
+    }
+}
+impl<Context> Decode<Context> for ConstantString {
+    fn decode<D: Decoder<Context = Context>>(decoder: &mut D) -> Result<Self, DecodeError> {
+        Ok(Self::RcStr(Decode::decode(decoder)?))
+    }
+}
+impl_borrow_decode!(ConstantString);
 
 impl ConstantString {
     pub fn as_str(&self) -> &str {
@@ -184,6 +212,63 @@ pub enum ConstantValue {
     BigInt(Box<BigInt>),
     Regex(Box<(Atom, Atom)>),
 }
+impl TraceRawVcs for ConstantValue {
+    fn trace_raw_vcs(&self, _context: &mut TraceRawVcsContext) {}
+}
+unsafe impl NonLocalValue for ConstantValue {}
+
+impl Encode for ConstantValue {
+    fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
+        match self {
+            Self::Undefined => 0u32.encode(encoder),
+            Self::Str(s) => {
+                1u32.encode(encoder)?;
+                s.encode(encoder)
+            }
+            Self::Num(n) => {
+                2u32.encode(encoder)?;
+                n.encode(encoder)
+            }
+            Self::True => 3u32.encode(encoder),
+            Self::False => 4u32.encode(encoder),
+            Self::Null => 5u32.encode(encoder),
+            Self::BigInt(n) => {
+                6u32.encode(encoder)?;
+                n.to_signed_bytes_le().encode(encoder)
+            }
+            Self::Regex(r) => {
+                7u32.encode(encoder)?;
+                r.0.as_str().encode(encoder)?;
+                r.1.as_str().encode(encoder)
+            }
+        }
+    }
+}
+
+impl<Context> Decode<Context> for ConstantValue {
+    fn decode<D: Decoder<Context = Context>>(decoder: &mut D) -> Result<Self, DecodeError> {
+        let variant: u32 = Decode::decode(decoder)?;
+        match variant {
+            0 => Ok(Self::Undefined),
+            1 => Ok(Self::Str(Decode::decode(decoder)?)),
+            2 => Ok(Self::Num(Decode::decode(decoder)?)),
+            3 => Ok(Self::True),
+            4 => Ok(Self::False),
+            5 => Ok(Self::Null),
+            6 => {
+                let bytes: Vec<u8> = Decode::decode(decoder)?;
+                Ok(Self::BigInt(Box::new(BigInt::from_signed_bytes_le(&bytes))))
+            }
+            7 => {
+                let exp: String = Decode::decode(decoder)?;
+                let flags: String = Decode::decode(decoder)?;
+                Ok(Self::Regex(Box::new((exp.into(), flags.into()))))
+            }
+            _ => Err(DecodeError::Other("invalid ConstantValue variant")),
+        }
+    }
+}
+impl_borrow_decode!(ConstantValue);
 
 impl ConstantValue {
     pub fn as_str(&self) -> Option<&str> {

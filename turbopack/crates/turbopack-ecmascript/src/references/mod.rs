@@ -3,6 +3,7 @@ pub mod async_module;
 pub mod cjs;
 pub mod constant_condition;
 pub mod constant_value;
+pub mod cross_module_constants;
 pub mod dynamic_expression;
 pub mod esm;
 pub mod exports_info;
@@ -129,6 +130,7 @@ use crate::{
             CjsAssetReference, CjsRequireAssetReference, CjsRequireCacheAccess,
             CjsRequireResolveAssetReference,
         },
+        cross_module_constants::module_value_to_constants_module,
         dynamic_expression::DynamicExpression,
         esm::{
             EsmAssetReference, EsmAsyncAssetReference, EsmBinding, EsmExports, EsmModuleItem,
@@ -3522,14 +3524,17 @@ async fn value_visitor_inner(
             "Buffer" => JsValue::WellKnownObject(WellKnownObjectKind::NodeBuffer),
             _ => return Ok((v, false)),
         },
-        JsValue::Module(ref mv) => compile_time_info
-            .environment()
-            .node_externals()
-            .await?
-            // TODO check externals
-            .then(|| module_value_to_well_known_object(mv))
-            .flatten()
-            .unwrap_or_else(|| v.into_unknown(true, "cross module analyzing is not yet supported")),
+        JsValue::Module(ref mv) => {
+            if *compile_time_info.environment().node_externals().await?
+                && let Some(external) = module_value_to_well_known_object(mv)
+            {
+                external
+            } else if let Some(module) = module_value_to_constants_module(mv, origin).await? {
+                module
+            } else {
+                v.into_unknown(true, "cross module analyzing is not yet supported")
+            }
+        }
         JsValue::Argument(..) => {
             v.into_unknown(true, "cross function analyzing is not yet supported")
         }
